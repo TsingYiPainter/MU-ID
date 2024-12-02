@@ -4,8 +4,12 @@ from mmwave.dataloader import utils
 import numpy as np
 import matplotlib.pyplot as plt
 
-adc_data = utils.parse_tsw1400("./mmwave_2/y1.bin", num_chirps_per_frame=17, num_frames=1000, num_ants= 2, num_adc_samples=256)
 
+static_data = utils.parse_tsw1400("./mmwave_3/static.bin", num_chirps_per_frame=34, num_frames=1000, num_ants= 2, num_adc_samples=598)
+adc_data = utils.parse_tsw1400("./mm4/w1.bin", num_chirps_per_frame=34, num_frames=1000, num_ants= 2, num_adc_samples=598)
+
+
+print(adc_data.shape)
 num_frames = adc_data.shape[0]  # 总帧数
 num_range_bins = adc_data.shape[-1]  # Range Bin 数量
 num_doppler_bins = adc_data.shape[1] # Doppler Bin 数量
@@ -15,7 +19,7 @@ print(num_doppler_bins)
 
 
 def cal2dFFT0():
-    radar_cube = mm.dsp.range_processing(adc_data[0])
+    radar_cube = mm.dsp.range_processing(static_data[300])
     detMatrix = mm.dsp.doppler_processing(radar_cube=radar_cube,interleaved=False)
     return detMatrix[0]
 
@@ -40,10 +44,19 @@ def cal2dFFTByFrame(index,origin2dFFT):
     detMatrix_thresholded = np.where(detMatrix_shifted >= threshold_dBFS, detMatrix_shifted, 0)
     return detMatrix_thresholded
 
-range_resolution = mm.dsp.range_resolution(num_adc_samples=256,dig_out_sample_rate=3000,freq_slope_const=18.829)
+range_resolution = mm.dsp.range_resolution(num_adc_samples=598,dig_out_sample_rate=3000,freq_slope_const=18.829)
 #print("range_resolution is {}m".format(range_resolution[0]))
-doppler_resolution = mm.dsp.doppler_resolution(band_width=range_resolution[1] ,start_freq_const=77,ramp_end_time = 200,idle_time_const=100,num_loops_per_frame=17,num_tx_antennas=2)
+print("bandwidth is {} ".format(range_resolution[1]))
+T_chirp= 212.43*1e-6
+T_idle = 300*1e-6
+PRF = 1 / (T_chirp + T_idle)
+doppler_bandwidth = PRF / 2
+print("bandwidth is {} ".format(doppler_bandwidth))
+print(3*10e8/(2*77*10e3*17*512.43))
+
+doppler_resolution = mm.dsp.doppler_resolution(band_width=range_resolution[1] ,start_freq_const=77,ramp_end_time = 212.43,idle_time_const=300,num_loops_per_frame=34,num_tx_antennas=2)
 #print("doppler_resolution is {}m/s".format(doppler_resolution))
+#doppler_resolution =3*10e8/(2*77*10e3*17*512.43)
 doppler_bins = np.arange(-num_doppler_bins//2+1, num_doppler_bins//2+1)  # 搬移后的 Doppler Bin 索引
 velocity_axis = doppler_bins * doppler_resolution  # 实际速度轴
 
@@ -58,11 +71,12 @@ for frame_idx in range(num_frames):
     R_hat = detMatrix_shifted / np.max(detMatrix_shifted, axis=1, keepdims=True)
     # 计算每个 Range Bin 的主导速度 V̂_i
     for i in range(num_range_bins):
-        velocity_map[i, frame_idx] = np.sum(R_hat[i, :] * velocity_axis) / num_doppler_bins
+        velocity_map[i, frame_idx] = np.sum(R_hat[i, :] * velocity_axis)/17
 
-
+range_bins = np.arange(-num_range_bins//2+1, num_range_bins//2+1)  # 搬移后的 Doppler Bin 索引
+range_bins = range_bins[::-1]
 # 绘制最终热力图
-range_axis = np.arange(num_range_bins) * range_resolution[0]
+range_axis = range_bins * range_resolution[0]
 plt.imshow(
     velocity_map,
     aspect='auto',
